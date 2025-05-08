@@ -21,7 +21,7 @@ ENDIF()
 
 MESSAGE(STATUS "ibverbs lib ${LIB_IBVERBS}")
 
-# 设置libmpool库文件路径
+
 SET(LIBMPOOL_PATH /flash/tmpfile/fischer.yxy/PolarDB_802/storage/innobase/mpool/libmpool.a)
 SET(LIBMYSQL /flash/tmpfile/fischer.yxy/PolarDB_802/lib/libmysqlclient.so)
 SET(PRDMA /flash/tmpfile/fischer.yxy/PolarDB_802/storage/innobase/rdma/libprdma.a)
@@ -32,7 +32,7 @@ target_include_directories(
   duckdb_mem_pool
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
-# 添加libmpool的include目录
+
 include_directories(/flash/tmpfile/fischer.yxy/PolarDB_802/storage/innobase/mpool/include)
 
 TARGET_LINK_LIBRARIES(duckdb_mem_pool ${LIB_RDMACM} ${LIB_IBVERBS} ${LIBMPOOL_PATH} ${LIBMYSQL} ${PRDMA} ${MEMPROTO} ${PROTOBUF_LIB} pthread)
