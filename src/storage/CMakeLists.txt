@@ -29,6 +29,7 @@ add_library_unity(
   optimistic_data_writer.cpp
   partial_block_manager.cpp
   single_file_block_manager.cpp
+  block_access_tracker.cpp
   storage_info.cpp
   storage_lock.cpp
   wal_replay.cpp)

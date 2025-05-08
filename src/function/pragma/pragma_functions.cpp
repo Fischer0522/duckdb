@@ -132,6 +132,17 @@ static void PragmaDisableOptimizer(ClientContext &context, const FunctionParamet
 	ClientConfig::GetConfig(context).enable_optimizer = false;
 }
 
+static void PragmaEnableBlockTracing(ClientContext &context, const FunctionParameters &parameters) {
+	auto &db = DatabaseInstance::GetDatabase(context);
+	auto trace_path = parameters.values[0].ToString();
+	BufferManager::EnableBlockAccessTracing(db, trace_path);
+}
+
+static void PragmaDisableBlockTracing(ClientContext &context, const FunctionParameters &parameters) {
+	auto &db = DatabaseInstance::GetDatabase(context);
+	BufferManager::DisableBlockAccessTracing(db);
+}
+
 void PragmaFunctions::RegisterFunction(BuiltinFunctions &set) {
 	RegisterEnableProfiling(set);
 
@@ -175,6 +186,12 @@ void PragmaFunctions::RegisterFunction(BuiltinFunctions &set) {
 	set.AddFunction(PragmaFunction::PragmaStatement("enable_checkpoint_on_shutdown", PragmaEnableCheckpointOnShutdown));
 	set.AddFunction(
 	    PragmaFunction::PragmaStatement("disable_checkpoint_on_shutdown", PragmaDisableCheckpointOnShutdown));
+
+	set.AddFunction(PragmaFunction::PragmaCall("enable_block_tracing", PragmaEnableBlockTracing, {LogicalType::VARCHAR}));
+	set.AddFunction(PragmaFunction::PragmaStatement("disable_block_tracing", PragmaDisableBlockTracing));
+
+
+	
 }
 
 } // namespace duckdb

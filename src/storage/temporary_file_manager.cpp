@@ -466,6 +466,13 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 	handle->WriteTemporaryBuffer(buffer, index.block_index.GetIndex(), compressed_buffer);
 
 	compression_adaptivity.Update(compression_result.level, time_before_ns);
+	uint64_t block_size;
+	if (compression_result.size == TemporaryBufferSize::DEFAULT) {
+		block_size = buffer.AllocSize();
+	} else {
+		block_size = TemporaryBufferSizeToSize(compression_result.size);
+	}
+	BufferManager::GetBufferManager(db).GetBlockAccessTracker(db).RecordAccess(block_id, BlockAccessType::WRITE,block_size, "WriteTemporaryBuffer");
 }
 
 TemporaryFileManager::CompressionResult
@@ -575,13 +582,14 @@ unique_ptr<FileBuffer> TemporaryFileManager::ReadTemporaryBuffer(block_id_t id,
 		index = GetTempBlockIndex(lock, id);
 		handle = GetFileHandle(lock, index.identifier);
 	}
-
 	auto buffer = handle->ReadTemporaryBuffer(index.block_index.GetIndex(), std::move(reusable_buffer));
+	BufferManager::GetBufferManager(db).GetBlockAccessTracker(db).RecordAccess(id, BlockAccessType::READ,TemporaryBufferSizeToSize(index.identifier.size), "ReadTemporaryBuffer");
 	{
 		// remove the block (and potentially erase the temp file)
 		TemporaryFileManagerLock lock(manager_lock);
 		EraseUsedBlock(lock, id, *handle, index);
 	}
+
 	return buffer;
 }
 
@@ -609,6 +617,7 @@ void TemporaryFileManager::EraseUsedBlock(TemporaryFileManagerLock &lock, block_
 	if (entry == used_blocks.end()) {
 		throw InternalException("EraseUsedBlock - Block %llu not found in used blocks", id);
 	}
+	BufferManager::GetBufferManager(db).GetBlockAccessTracker(db).RecordAccess(id, BlockAccessType::REMOVE,0, "EraseUsedBlock");
 	used_blocks.erase(entry);
 	handle.EraseBlockIndex(NumericCast<block_id_t>(index.block_index.GetIndex()));
 	if (handle.DeleteIfEmpty()) {

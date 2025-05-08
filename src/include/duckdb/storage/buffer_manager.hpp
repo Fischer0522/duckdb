@@ -15,6 +15,7 @@
 #include "duckdb/common/enums/memory_tag.hpp"
 #include "duckdb/storage/buffer/temporary_file_information.hpp"
 #include "duckdb/main/config.hpp"
+#include "duckdb/storage/block_access_tracker.hpp"
 
 namespace duckdb {
 
@@ -98,6 +99,15 @@ public:
 	//! Get the manager that assigns reservations for temporary memory, e.g., for query intermediates
 	virtual TemporaryMemoryManager &GetTemporaryMemoryManager();
 
+	//! Enable block access tracing to the specified file
+	static void EnableBlockAccessTracing(DatabaseInstance &db, const string &trace_path);
+	
+	//! Disable block access tracing
+	static void DisableBlockAccessTracing(DatabaseInstance &db);
+	
+	//! Get the block access tracker
+	BlockAccessTracker &GetBlockAccessTracker(DatabaseInstance &db);
+
 protected:
 	virtual void PurgeQueue(const BlockHandle &handle) = 0;
 	virtual void AddToEvictionQueue(shared_ptr<BlockHandle> &handle);
@@ -105,6 +115,9 @@ protected:
 	virtual unique_ptr<FileBuffer> ReadTemporaryBuffer(MemoryTag tag, BlockHandle &block,
 	                                                   unique_ptr<FileBuffer> buffer);
 	virtual void DeleteTemporaryFile(BlockHandle &block);
+
+	//! The block access tracker
+	unique_ptr<BlockAccessTracker> block_access_tracker;
 };
 
 } // namespace duckdb

@@ -92,4 +92,22 @@ void BufferManager::DeleteTemporaryFile(BlockHandle &block) {
 	throw NotImplementedException("This type of BufferManager does not support 'DeleteTemporaryFile");
 }
 
+void BufferManager::EnableBlockAccessTracing(DatabaseInstance &db, const string &trace_path) {
+	auto &buffer_manager = GetBufferManager(db);
+	auto &standard_buffer_manager = dynamic_cast<StandardBufferManager&>(buffer_manager);
+	standard_buffer_manager.InitializeBlockAccessTracker(trace_path);
+}
+
+void BufferManager::DisableBlockAccessTracing(DatabaseInstance &db) {
+	auto &buffer_manager = GetBufferManager(db);
+	auto &standard_buffer_manager = dynamic_cast<StandardBufferManager&>(buffer_manager);
+	standard_buffer_manager.GetBlockAccessTracker().SetEnabled(false);
+}
+
+BlockAccessTracker &BufferManager::GetBlockAccessTracker(DatabaseInstance &db) {
+	auto &buffer_manager = GetBufferManager(db);
+	auto &standard_buffer_manager = dynamic_cast<StandardBufferManager&>(buffer_manager);
+	return standard_buffer_manager.GetBlockAccessTracker();
+}
+
 } // namespace duckdb

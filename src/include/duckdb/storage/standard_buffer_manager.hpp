@@ -102,6 +102,13 @@ public:
 	DUCKDB_API void FreeReservedMemory(idx_t size) final;
 	bool HasTemporaryDirectory() const final;
 
+	//! Initialize the block access tracker
+	void InitializeBlockAccessTracker(const string &trace_path);
+
+	//! Get the block access tracker
+	BlockAccessTracker &GetBlockAccessTracker() ;
+
+
 protected:
 	//! Helper
 	template <typename... ARGS>

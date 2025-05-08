@@ -464,6 +464,8 @@ void StandardBufferManager::RequireTemporaryDirectory() {
 }
 
 void StandardBufferManager::WriteTemporaryBuffer(MemoryTag tag, block_id_t block_id, FileBuffer &buffer) {
+	// 记录写入操作
+
 
 	// WriteTemporaryBuffer assumes that we never write a buffer below DEFAULT_BLOCK_ALLOC_SIZE.
 	RequireTemporaryDirectory();
@@ -485,13 +487,18 @@ void StandardBufferManager::WriteTemporaryBuffer(MemoryTag tag, block_id_t block
 	temporary_directory.handle->GetTempFile().IncreaseSizeOnDisk(buffer.AllocSize() + sizeof(idx_t));
 	handle->Write(&buffer.size, sizeof(idx_t), 0);
 	buffer.Write(*handle, sizeof(idx_t));
+	GetBlockAccessTracker().RecordAccess(block_id, BlockAccessType::WRITE,buffer.size, "WriteTemporaryBuffer");
 }
 
 unique_ptr<FileBuffer> StandardBufferManager::ReadTemporaryBuffer(MemoryTag tag, BlockHandle &block,
                                                                   unique_ptr<FileBuffer> reusable_buffer) {
+	auto id = block.BlockId();
+	
+	// 记录读取操作
+
+	
 	D_ASSERT(!temporary_directory.path.empty());
 	D_ASSERT(temporary_directory.handle.get());
-	auto id = block.BlockId();
 	if (temporary_directory.handle->GetTempFile().HasTemporaryBuffer(id)) {
 		// This is a block that was offloaded to a regular .tmp file, the file contains blocks of a fixed size
 		return temporary_directory.handle->GetTempFile().ReadTemporaryBuffer(id, std::move(reusable_buffer));
@@ -507,6 +514,8 @@ unique_ptr<FileBuffer> StandardBufferManager::ReadTemporaryBuffer(MemoryTag tag,
 	// Allocate a buffer of the file's size and read the data into that buffer.
 	auto buffer = ReadTemporaryBufferInternal(*this, *handle, sizeof(idx_t), block_size, std::move(reusable_buffer));
 	handle.reset();
+
+	GetBlockAccessTracker().RecordAccess(id, BlockAccessType::READ,block_size, "ReadTemporaryBuffer");
 
 	// Delete the file and return the buffer.
 	DeleteTemporaryFile(block);
@@ -661,6 +670,20 @@ Allocator &BufferAllocator::Get(AttachedDatabase &db) {
 
 Allocator &StandardBufferManager::GetBufferAllocator() {
 	return buffer_allocator;
+}
+
+
+
+void StandardBufferManager::InitializeBlockAccessTracker(const string &trace_path) {
+	block_access_tracker = make_uniq<BlockAccessTracker>(trace_path);
+}
+
+BlockAccessTracker &StandardBufferManager::GetBlockAccessTracker() {
+	if (!block_access_tracker) {
+		// Create a dummy tracker if none exists
+		block_access_tracker = make_uniq<BlockAccessTracker>("");
+	}
+	return *block_access_tracker;
 }
 
 } // namespace duckdb
