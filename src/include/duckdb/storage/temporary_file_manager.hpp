@@ -17,6 +17,7 @@
 #include "duckdb/common/random_engine.hpp"
 #include "duckdb/common/unordered_map.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
+#include "block_manager.h"
 
 namespace duckdb {
 
@@ -127,6 +128,8 @@ public:
 	};
 
 public:
+	TemporaryFileIdentifier GetIdentifier() const { return identifier; }
+
 	//! Try to get an index of where to write in this file. Returns an invalid index if full
 	TemporaryFileIndex TryGetBlockIndex();
 	//! Remove block index from this TemporaryFileHandle
@@ -318,6 +321,10 @@ private:
 	//! The set of active temporary file handles
 	TemporaryFileMap files;
 	//! Map of block_id -> temporary file position
+
+
+	unique_ptr<mpool::RemoteBlockManager> remote_block_manager;
+
 	unordered_map<block_id_t, TemporaryFileIndex> used_blocks;
 	//! Map of TemporaryBufferSize -> manager of in-use temporary file indexes
 	unordered_map<TemporaryBufferSize, BlockIndexManager, EnumClassHash> index_managers;

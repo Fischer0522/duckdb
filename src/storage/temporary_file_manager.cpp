@@ -1,11 +1,16 @@
 #include "duckdb/storage/temporary_file_manager.hpp"
 
+#include "common.h"
+#include "config.h"
+#include "duckdb/common/assert.hpp"
 #include "duckdb/common/chrono.hpp"
 #include "duckdb/common/enum_util.hpp"
+#include "duckdb/common/helper.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include "duckdb/storage/buffer/temporary_file_information.hpp"
 #include "duckdb/storage/standard_buffer_manager.hpp"
 #include "zstd.h"
+#include <cassert>
 
 namespace duckdb {
 
@@ -416,6 +421,10 @@ void TemporaryFileCompressionAdaptivity::Update(const TemporaryCompressionLevel 
 //===--------------------------------------------------------------------===//
 TemporaryFileManager::TemporaryFileManager(DatabaseInstance &db, const string &temp_directory_p)
     : db(db), temp_directory(temp_directory_p), files(*this), size_on_disk(0), max_swap_space(0) {
+			auto* config = new mpool::Config();
+			remote_block_manager = make_uniq<mpool::RemoteBlockManager>(config);
+			auto ret = remote_block_manager->init();
+			assert(ret == mpool::StatusCode::OK);
 }
 
 TemporaryFileManager::~TemporaryFileManager() {
@@ -451,11 +460,11 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 		}
 		if (!handle) {
 			// no existing handle to write to; we need to create & open a new file
-			auto &size = compression_result.size;
-			const TemporaryFileIdentifier identifier(size, index_managers[size].GetNewBlockIndex(size));
-			auto &new_file = files.CreateFile(identifier);
-			index = new_file.TryGetBlockIndex();
-			handle = &new_file;
+		auto &size = compression_result.size;
+		const TemporaryFileIdentifier identifier(size, index_managers[size].GetNewBlockIndex(size));
+		auto &new_file = files.CreateFile(identifier);
+		index = new_file.TryGetBlockIndex();
+		handle = &new_file;
 		}
 		D_ASSERT(used_blocks.find(block_id) == used_blocks.end());
 		used_blocks[block_id] = index;
@@ -463,7 +472,15 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 	D_ASSERT(handle);
 	D_ASSERT(index.IsValid());
 
-	handle->WriteTemporaryBuffer(buffer, index.block_index.GetIndex(), compressed_buffer);
+	if (handle.get()->GetIdentifier().size == TemporaryBufferSize::DEFAULT) {
+		remote_block_manager->put(block_id, buffer.InternalBuffer(), buffer.AllocSize());
+	} else {
+		D_ASSERT(compressed_buffer.get() != nullptr);
+		remote_block_manager->put(block_id, compressed_buffer.get(), static_cast<uint64_t>(compression_result.size));
+	}
+
+
+	// handle->WriteTemporaryBuffer(buffer, index.block_index.GetIndex(), compressed_buffer);
 
 	compression_adaptivity.Update(compression_result.level, time_before_ns);
 }
@@ -569,6 +586,12 @@ void TemporaryFileManager::DecreaseSizeOnDisk(idx_t bytes) {
 unique_ptr<FileBuffer> TemporaryFileManager::ReadTemporaryBuffer(block_id_t id,
                                                                  unique_ptr<FileBuffer> reusable_buffer) {
 	TemporaryFileIndex index;
+	{
+		TemporaryFileManagerLock lock(manager_lock);
+		index = GetTempBlockIndex(lock, id);
+	}
+	auto &buffer_manager = BufferManager::GetBufferManager(db);
+	auto buffer = buffer_manager.ConstructManagedBuffer(buffer_manager.GetBlockSize(), std::move(reusable_buffer));
 	optional_ptr<TemporaryFileHandle> handle;
 	{
 		TemporaryFileManagerLock lock(manager_lock);
@@ -576,7 +599,23 @@ unique_ptr<FileBuffer> TemporaryFileManager::ReadTemporaryBuffer(block_id_t id,
 		handle = GetFileHandle(lock, index.identifier);
 	}
 
-	auto buffer = handle->ReadTemporaryBuffer(index.block_index.GetIndex(), std::move(reusable_buffer));
+	auto identifier = handle->GetIdentifier();
+	if (identifier.size == TemporaryBufferSize::DEFAULT) {
+		remote_block_manager->get(id, buffer->InternalBuffer());
+	} else {
+		auto compressed_buffer = Allocator::Get(db).Allocate(TemporaryBufferSizeToSize(identifier.size));
+		remote_block_manager->get(id, compressed_buffer.get());
+		const auto compressed_size = Load<idx_t>(compressed_buffer.get());
+		D_ASSERT(!duckdb_zstd::ZSTD_isError(compressed_size));
+		const auto decompressed_size = duckdb_zstd::ZSTD_decompress(
+				buffer->InternalBuffer(), buffer->AllocSize(), compressed_buffer.get() + sizeof(idx_t), compressed_size);
+		(void)decompressed_size;
+		//D_ASSERT(!duckdb_zstd::ZSTD_isError(decompressed_size));
+
+		D_ASSERT(decompressed_size == buffer->AllocSize());
+	}
+
+	//auto buffer = handle->ReadTemporaryBuffer(index.block_index.GetIndex(), std::move(reusable_buffer));
 	{
 		// remove the block (and potentially erase the temp file)
 		TemporaryFileManagerLock lock(manager_lock);
@@ -610,6 +649,7 @@ void TemporaryFileManager::EraseUsedBlock(TemporaryFileManagerLock &lock, block_
 		throw InternalException("EraseUsedBlock - Block %llu not found in used blocks", id);
 	}
 	used_blocks.erase(entry);
+	remote_block_manager->remove(id);
 	handle.EraseBlockIndex(NumericCast<block_id_t>(index.block_index.GetIndex()));
 	if (handle.DeleteIfEmpty()) {
 		EraseFileHandle(lock, index.identifier);
