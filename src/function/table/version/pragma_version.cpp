@@ -1,9 +1,17 @@
 #include "duckdb/function/table/system_functions.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/common/string_util.hpp"
-#include "duckdb/common/platform.hpp"
 
 #include <cstdint>
+
+// hardcode version info
+#ifndef DUCKDB_SOURCE_ID
+#define DUCKDB_SOURCE_ID "hardcoded-source-id"
+#endif
+
+#ifndef DUCKDB_VERSION
+#define DUCKDB_VERSION "v0.9.0"  
+#endif
 
 namespace duckdb {
 
@@ -59,7 +67,7 @@ const char *DuckDB::LibraryVersion() {
 }
 
 string DuckDB::Platform() {
-	return DuckDBPlatform();
+	return "linux_amd64";
 }
 
 struct PragmaPlatformData : public GlobalTableFunctionState {

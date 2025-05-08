@@ -20,6 +20,10 @@ if(POLICY CMP0063)
   cmake_policy(SET CMP0063 NEW)
 endif()
 
+# 在项目定义之前添加
+set(CMAKE_C_COMPILER "/opt/rh/devtoolset-7/root/usr/bin/gcc")
+set(CMAKE_CXX_COMPILER "/opt/rh/devtoolset-7/root/usr/bin/g++")
+
 project(DuckDB)
 
 find_package(Threads REQUIRED)
@@ -28,7 +32,7 @@ set(DUCKDB_MODULE_BASE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(CMAKE_CXX_STANDARD "11" CACHE STRING "C++ standard to enforce")
+set(CMAKE_CXX_STANDARD "14" CACHE STRING "C++ standard to enforce")
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -667,6 +671,9 @@ include_directories(third_party/mbedtls/include)
 include_directories(third_party/jaro_winkler)
 include_directories(third_party/yyjson/include)
 include_directories(third_party/zstd/include)
+include_directories(/flash/tmpfile/fischer.yxy/PolarDB_802/storage/innobase/mpool/include)
+
+
 
 # todo only regenerate ub file if one of the input files changed hack alert
 function(enable_unity_build UB_SUFFIX SOURCE_VARIABLE_NAME)
@@ -1253,6 +1260,8 @@ if(${EXPORT_DLL_SYMBOLS})
   add_definitions(-DDUCKDB_BUILD_LIBRARY)
 endif()
 
+add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+
 # Log extensions that are built by directly passing cmake variables
 foreach(EXT IN LISTS DUCKDB_EXTENSION_NAMES)
   if (NOT "${EXT}" STREQUAL "")
@@ -1539,3 +1548,6 @@ if(EXISTS ${CMAKE_CONFIG_TEMPLATE} AND EXISTS ${CMAKE_CONFIG_VERSION_TEMPLATE})
           "${PROJECT_BINARY_DIR}/DuckDBConfigVersion.cmake"
     DESTINATION "${INSTALL_CMAKE_DIR}")
 endif()
+
+
+message(STATUS "DUCKDB_EXPLICIT_PLATFORM is set to: ${DUCKDB_EXPLICIT_PLATFORM}")

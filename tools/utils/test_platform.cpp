@@ -1,7 +1,6 @@
-#include "duckdb/common/platform.hpp"
 #include <iostream>
 
 int main() {
-	std::cout << duckdb::DuckDBPlatform();
+	std::cout<< "linux_amd64" << std::endl;
 	return 0;
 }
