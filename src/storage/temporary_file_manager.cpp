@@ -207,6 +207,9 @@ unique_ptr<FileBuffer> TemporaryFileHandle::ReadTemporaryBuffer(idx_t block_inde
 	auto compressed_buffer = Allocator::Get(db).Allocate(TemporaryBufferSizeToSize(identifier.size));
 	handle->Read(compressed_buffer.get(), compressed_buffer.GetSize(), GetPositionInFile(block_index));
 
+	// 记录解压缩开始时间
+	auto decompress_start_time = std::chrono::high_resolution_clock::now();
+
 	// Decompress into buffer
 	auto buffer = buffer_manager.ConstructManagedBuffer(buffer_manager.GetBlockSize(), std::move(reusable_buffer));
 
@@ -218,6 +221,24 @@ unique_ptr<FileBuffer> TemporaryFileHandle::ReadTemporaryBuffer(idx_t block_inde
 	D_ASSERT(!duckdb_zstd::ZSTD_isError(decompressed_size));
 
 	D_ASSERT(decompressed_size == buffer->AllocSize());
+	
+	// 计算解压缩时间
+	auto decompress_end_time = std::chrono::high_resolution_clock::now();
+	auto decompress_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+	    decompress_end_time - decompress_start_time).count();
+	
+	// 计算压缩比
+	double compression_ratio = static_cast<double>(decompressed_size) / static_cast<double>(compressed_size);
+	
+	// 记录解压缩信息
+	string decompress_log = StringUtil::Format(
+	    "Decompression: Compressed Size: %s, Decompressed Size: %s, Ratio: %.2fx, Duration: %lld µs", 
+	    StringUtil::BytesToHumanReadableString(compressed_size).c_str(),
+	    StringUtil::BytesToHumanReadableString(decompressed_size).c_str(),
+	    compression_ratio,
+	    decompress_duration);
+	
+	Printer::Print(decompress_log);
 	return buffer;
 }
 
@@ -432,9 +453,16 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 	const auto adaptivity_idx = TaskScheduler::GetEstimatedCPUId() % COMPRESSION_ADAPTIVITIES;
 	auto &compression_adaptivity = compression_adaptivities[adaptivity_idx];
 
+	// 记录开始时间
+	// auto start_time = std::chrono::high_resolution_clock::now();
+	
 	const auto time_before_ns = TemporaryFileCompressionAdaptivity::GetCurrentTimeNanos();
 	AllocatedData compressed_buffer;
 	const auto compression_result = CompressBuffer(compression_adaptivity, buffer, compressed_buffer);
+	
+	// 计算压缩时间
+	// auto compress_end_time = std::chrono::high_resolution_clock::now();
+	// auto compress_duration = std::chrono::duration_cast<std::chrono::microseconds>(compress_end_time - start_time).count();
 
 	TemporaryFileIndex index;
 	optional_ptr<TemporaryFileHandle> handle;
@@ -463,7 +491,17 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 	D_ASSERT(handle);
 	D_ASSERT(index.IsValid());
 
+	// 记录IO开始时间
+	// auto io_start_time = std::chrono::high_resolution_clock::now();
+	
 	handle->WriteTemporaryBuffer(buffer, index.block_index.GetIndex(), compressed_buffer);
+	
+	// 计算IO时间
+	// auto io_end_time = std::chrono::high_resolution_clock::now();
+	// auto io_duration = std::chrono::duration_cast<std::chrono::microseconds>(io_end_time - io_start_time).count();
+	
+	// // 计算总时间
+	// auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(io_end_time - start_time).count();
 
 	compression_adaptivity.Update(compression_result.level, time_before_ns);
 	uint64_t block_size;
@@ -472,7 +510,36 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 	} else {
 		block_size = TemporaryBufferSizeToSize(compression_result.size);
 	}
-	BufferManager::GetBufferManager(db).GetBlockAccessTracker(db).RecordAccess(block_id, BlockAccessType::WRITE,block_size, "WriteTemporaryBuffer");
+	
+	// 记录压缩比率
+	// double compression_ratio = 1.0;
+	// if (compression_result.size != TemporaryBufferSize::DEFAULT) {
+	// 	compression_ratio = static_cast<double>(buffer.AllocSize()) / static_cast<double>(block_size);
+	// }
+	
+	// 记录日志
+	// string compression_info;
+	// if (compression_result.level == TemporaryCompressionLevel::UNCOMPRESSED) {
+	// 	compression_info = "UNCOMPRESSED";
+	// } else {
+	// 	compression_info = StringUtil::Format("LEVEL %d (ratio: %.2fx)", 
+	// 		static_cast<int>(compression_result.level), compression_ratio);
+	// }
+	
+	// // 写入日志
+	// string log_message = StringUtil::Format(
+	// 	"Block %llu: %s, Size: %s, Compress: %lld µs, IO: %lld µs, Total: %lld µs", 
+	// 	block_id, 
+	// 	compression_info.c_str(),
+	// 	StringUtil::BytesToHumanReadableString(block_size).c_str(),
+	// 	compress_duration,
+	// 	io_duration,
+	// 	total_duration);
+	
+	// // 使用 DuckDB 的日志系统记录
+	// Printer::Print(log_message);
+	
+	BufferManager::GetBufferManager(db).GetBlockAccessTracker(db).RecordAccess(block_id, BlockAccessType::WRITE, block_size, "WriteTemporaryBuffer");
 }
 
 TemporaryFileManager::CompressionResult
@@ -491,6 +558,7 @@ TemporaryFileManager::CompressBuffer(TemporaryFileCompressionAdaptivity &compres
 	const auto compression_level = static_cast<int>(level);
 	D_ASSERT(compression_level >= duckdb_zstd::ZSTD_minCLevel() && compression_level <= duckdb_zstd::ZSTD_maxCLevel());
 	const auto zstd_bound = duckdb_zstd::ZSTD_compressBound(buffer.AllocSize());
+
 	compressed_buffer = Allocator::Get(db).Allocate(sizeof(idx_t) + zstd_bound);
 	const auto zstd_size = duckdb_zstd::ZSTD_compress(compressed_buffer.get() + sizeof(idx_t), zstd_bound,
 	                                                  buffer.InternalBuffer(), buffer.AllocSize(), compression_level);
@@ -575,6 +643,9 @@ void TemporaryFileManager::DecreaseSizeOnDisk(idx_t bytes) {
 
 unique_ptr<FileBuffer> TemporaryFileManager::ReadTemporaryBuffer(block_id_t id,
                                                                  unique_ptr<FileBuffer> reusable_buffer) {
+	// 记录开始时间
+	// auto start_time = std::chrono::high_resolution_clock::now();
+	
 	TemporaryFileIndex index;
 	optional_ptr<TemporaryFileHandle> handle;
 	{
@@ -582,8 +653,39 @@ unique_ptr<FileBuffer> TemporaryFileManager::ReadTemporaryBuffer(block_id_t id,
 		index = GetTempBlockIndex(lock, id);
 		handle = GetFileHandle(lock, index.identifier);
 	}
+	
+	// 记录IO开始时间
+	// auto io_start_time = std::chrono::high_resolution_clock::now();
+	
 	auto buffer = handle->ReadTemporaryBuffer(index.block_index.GetIndex(), std::move(reusable_buffer));
-	BufferManager::GetBufferManager(db).GetBlockAccessTracker(db).RecordAccess(id, BlockAccessType::READ,TemporaryBufferSizeToSize(index.identifier.size), "ReadTemporaryBuffer");
+	
+	// 计算IO时间
+	// auto io_end_time = std::chrono::high_resolution_clock::now();
+	// auto io_duration = std::chrono::duration_cast<std::chrono::microseconds>(io_end_time - io_start_time).count();
+	
+	// 记录解压缩开始时间
+	// auto decompress_start_time = std::chrono::high_resolution_clock::now();
+	
+	// // 注意：解压缩实际上是在 ReadTemporaryBuffer 内部完成的，这里我们只是记录后续处理时间
+	
+	// // 计算总时间
+	// auto total_end_time = std::chrono::high_resolution_clock::now();
+	// auto decompress_duration = std::chrono::duration_cast<std::chrono::microseconds>(total_end_time - decompress_start_time).count();
+	// auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(total_end_time - start_time).count();
+	
+	// 写入日志
+	// string log_message = StringUtil::Format(
+	// 	"Read Block %llu: Size: %s, IO: %lld µs, Post-processing: %lld µs, Total: %lld µs", 
+	// 	id, 
+	// 	StringUtil::BytesToHumanReadableString(buffer->AllocSize()).c_str(),
+	// 	io_duration,
+	// 	decompress_duration,
+	// 	total_duration);
+	
+	// // 使用 DuckDB 的日志系统记录
+	// Printer::Print(log_message);
+	
+	BufferManager::GetBufferManager(db).GetBlockAccessTracker(db).RecordAccess(id, BlockAccessType::READ, TemporaryBufferSizeToSize(index.identifier.size), "ReadTemporaryBuffer");
 	{
 		// remove the block (and potentially erase the temp file)
 		TemporaryFileManagerLock lock(manager_lock);

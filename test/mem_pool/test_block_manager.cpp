@@ -20,8 +20,8 @@ bool test_basic_read_write(RemoteBlockManager* block_manager) {
   }
   
   auto ret = block_manager->put(id, content, block_size);
-  if (ret != StatusCode::OK) {
-    std::cout << "Put failed with error code: " << static_cast<int>(ret) << std::endl;
+  if (!ret.is_ok()) {
+    std::cout << "Put failed with error code: " << ret.message() << std::endl;
     delete[] content;
     return false;
   }
@@ -29,8 +29,8 @@ bool test_basic_read_write(RemoteBlockManager* block_manager) {
   unsigned char* buffer = new unsigned char[block_size];
   ret = block_manager->get(id, buffer);
   
-  if (ret != StatusCode::OK) {
-    std::cout << "Get failed with error code: " << static_cast<int>(ret) << std::endl;
+  if (!ret.is_ok()) {
+    std::cout << "Get failed with error code: " << ret.message() << std::endl;
     delete[] content;
     delete[] buffer;
     return false;
@@ -62,9 +62,9 @@ TEST_CASE("Test block manager init", "[mem_pool]") {
   std::unique_ptr<RemoteBlockManager> block_manager = 
       std::make_unique<RemoteBlockManager>(config);
   auto ret = block_manager->init();
-  if (ret != StatusCode::OK) {
+  if (!ret.is_ok()) {
     std::cout << "RemoteBlockManager init failed with error code: " 
-              << static_cast<int>(ret) << std::endl;
+              << ret.message();
     return;
   }
   
