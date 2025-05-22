@@ -3,7 +3,6 @@
 #include "duckdb/common/allocator.hpp"
 #include "duckdb/common/enums/memory_tag.hpp"
 #include "duckdb/common/exception.hpp"
-#include "duckdb/common/set.hpp"
 #include "duckdb/main/attached_database.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/storage/buffer/buffer_pool.hpp"
@@ -64,6 +63,7 @@ StandardBufferManager::StandardBufferManager(DatabaseInstance &db, string tmp)
       buffer_allocator(BufferAllocatorAllocate, BufferAllocatorFree, BufferAllocatorRealloc,
                        make_uniq<BufferAllocatorData>(*this)) {
 	temp_block_manager = make_uniq<InMemoryBlockManager>(*this, DEFAULT_BLOCK_ALLOC_SIZE);
+	remote_block_manager = make_uniq<RemoteBlockManager>(db);
 	temporary_directory.path = std::move(tmp);
 	for (idx_t i = 0; i < MEMORY_TAG_COUNT; i++) {
 		evicted_data_per_tag[i] = 0;
@@ -471,10 +471,12 @@ void StandardBufferManager::WriteTemporaryBuffer(MemoryTag tag, block_id_t block
 	// Append to a few grouped files.
 	if (buffer.AllocSize() == GetBlockAllocSize()) {
 		evicted_data_per_tag[uint8_t(tag)] += GetBlockAllocSize();
-		temporary_directory.handle->GetTempFile().WriteTemporaryBuffer(block_id, buffer);
+		//temporary_directory.handle->GetTempFile().WriteTemporaryBuffer(block_id, buffer);
+		remote_block_manager->WriteTemporaryBuffer(block_id, buffer);
 		return;
 	}
 
+	// Currently, write large block to disk
 	// Get the path to write to.
 	auto path = GetTemporaryPath(block_id);
 	evicted_data_per_tag[uint8_t(tag)] += buffer.AllocSize();
@@ -491,17 +493,19 @@ void StandardBufferManager::WriteTemporaryBuffer(MemoryTag tag, block_id_t block
 unique_ptr<FileBuffer> StandardBufferManager::ReadTemporaryBuffer(MemoryTag tag, BlockHandle &block,
                                                                   unique_ptr<FileBuffer> reusable_buffer) {
 	auto id = block.BlockId();
-	
-	// 记录读取操作
-
-	
+		
 	D_ASSERT(!temporary_directory.path.empty());
-	D_ASSERT(temporary_directory.handle.get());
-	if (temporary_directory.handle->GetTempFile().HasTemporaryBuffer(id)) {
-		// This is a block that was offloaded to a regular .tmp file, the file contains blocks of a fixed size
-		return temporary_directory.handle->GetTempFile().ReadTemporaryBuffer(id, std::move(reusable_buffer));
+	// D_ASSERT(temporary_directory.handle.get());
+	// if (temporary_directory.handle->GetTempFile().HasTemporaryBuffer(id)) {
+	// 	// This is a block that was offloaded to a regular .tmp file, the file contains blocks of a fixed size
+	// 	return temporary_directory.handle->GetTempFile().ReadTemporaryBuffer(id, std::move(reusable_buffer));
+	// }
+
+	if (remote_block_manager->HasTemporaryBuffer(id)) {
+		return remote_block_manager->ReadTemporaryBuffer(id, std::move(reusable_buffer));
 	}
 
+	D_ASSERT(temporary_directory.handle.get());
 	// This block contains data of variable size so we need to open it and read it to get its size.
 	idx_t block_size;
 	auto path = GetTemporaryPath(id);
@@ -526,17 +530,22 @@ void StandardBufferManager::DeleteTemporaryFile(BlockHandle &block) {
 		// no temporary directory specified: nothing to delete
 		return;
 	}
-	{
-		lock_guard<mutex> guard(temporary_directory.lock);
-		if (!temporary_directory.handle) {
-			// temporary directory was not initialized yet: nothing to delete
-			return;
-		}
-	}
+	// {
+	// 	lock_guard<mutex> guard(temporary_directory.lock);
+	// 	if (!temporary_directory.handle) {
+	// 		// temporary directory was not initialized yet: nothing to delete
+	// 		return;
+	// 	}
+	// }
 	// check if we should delete the file from the shared pool of files, or from the general file system
-	if (temporary_directory.handle->GetTempFile().HasTemporaryBuffer(id)) {
-		evicted_data_per_tag[uint8_t(block.GetMemoryTag())] -= GetBlockAllocSize();
-		temporary_directory.handle->GetTempFile().DeleteTemporaryBuffer(id);
+	// if (temporary_directory.handle->GetTempFile().HasTemporaryBuffer(id)) {
+	// 	evicted_data_per_tag[uint8_t(block.GetMemoryTag())] -= GetBlockAllocSize();
+	// 	temporary_directory.handle->GetTempFile().DeleteTemporaryBuffer(id);
+	// 	return;
+	// }
+
+	if (remote_block_manager->HasTemporaryBuffer(id)) {
+		remote_block_manager->DeleteTemporaryBuffer(id);
 		return;
 	}
 

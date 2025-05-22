@@ -1,52 +1,20 @@
 #include <cstring>
 #include <iostream>
-#include "catch.hpp"
-#include "block_manager.h"
+#include <memory>
+#include <utility>
 #include "config.h"
+#include "duckdb/common/assert.hpp"
+#include "duckdb/common/file_buffer.hpp"
+#include "duckdb/common/helper.hpp"
+#include "catch.hpp"
+#include "duckdb/main/database.hpp"
+#include "duckdb/storage/remote_block_manager.hpp"
+#include "duckdb/common/stacktrace.hpp"
 
-using namespace mpool;
-void print_test_result(const std::string& test_name, bool success) {
-  std::cout << "Test: " << test_name << " - " 
-            << (success ? "PASSED" : "FAILED") << std::endl;
-}
-bool test_basic_read_write(RemoteBlockManager* block_manager) {
-  BlockId id = 123;
-  uint64_t block_size = 1024;
-  unsigned char* content = new unsigned char[block_size];
-  
-  // Fill with pattern
-  for (uint64_t i = 0; i < block_size; ++i) {
-    content[i] = i % 256;
-  }
-  
-  auto ret = block_manager->put(id, content, block_size);
-  if (!ret.is_ok()) {
-    std::cout << "Put failed with error code: " << ret.message() << std::endl;
-    delete[] content;
-    return false;
-  }
-  
-  unsigned char* buffer = new unsigned char[block_size];
-  ret = block_manager->get(id, buffer);
-  
-  if (!ret.is_ok()) {
-    std::cout << "Get failed with error code: " << ret.message() << std::endl;
-    delete[] content;
-    delete[] buffer;
-    return false;
-  }
-  
-  // Verify data
-  bool data_match = (memcmp(content, buffer, block_size) == 0);
-  
-  delete[] content;
-  delete[] buffer;
-  
-  return data_match;
-}
 
-TEST_CASE("Test block manager init", "[mem_pool]") {
-  auto config = new mpool::Config();
+using namespace duckdb;
+std::unique_ptr<mpool::Config> init_config() {
+  auto config = make_uniq<mpool::Config>();
   config->hn_host = "127.0.0.1";
   config->hn_user = "root";
   config->hn_password = "123123";
@@ -57,21 +25,28 @@ TEST_CASE("Test block manager init", "[mem_pool]") {
   config->alloc_sizes = {512, 1024, 4096, 8192};
   config->eviction_strategy = "lru";
   config->background_evcition = false;
-  std::cout <<std::endl;
-  std::cout << "Initializing RemoteBlockManager..." << std::endl;
-  std::unique_ptr<RemoteBlockManager> block_manager = 
-      std::make_unique<RemoteBlockManager>(config);
-  auto ret = block_manager->init();
-  if (!ret.is_ok()) {
-    std::cout << "RemoteBlockManager init failed with error code: " 
-              << ret.message();
-    return;
-  }
-  
-  std::cout << "Running tests..." << std::endl;
-  
-  // // Run basic test
-  bool basic_test_result = test_basic_read_write(block_manager.get());
-  print_test_result("Basic Read/Write", basic_test_result);
-  delete config;
+  return std::move(config);
+}
+
+TEST_CASE("Test read write", "[mem_pool]") {
+  DuckDB db(nullptr);
+  auto ins = db.instance;
+  RemoteBlockManager* block_manager = new RemoteBlockManager(*ins);
+  std::cout << std::endl << "init TempBlockmanager success" << std::endl;
+  auto block_size = DEFAULT_BLOCK_ALLOC_SIZE - Storage::DEFAULT_BLOCK_HEADER_SIZE;
+  auto buf = ins->GetBufferManager().ConstructManagedBuffer(block_size, nullptr, FileBufferType::MANAGED_BUFFER);
+  // fill this buffer
+  auto internal = buf->InternalBuffer(); 
+  memset(internal, 1, block_size);
+  D_ASSERT(buf != nullptr);
+  block_manager->WriteTemporaryBuffer(1,*buf);
+  std::cout << "write buffer success" << std::endl;
+  auto read_buf = ins->GetBufferManager().ConstructManagedBuffer(block_size, nullptr, FileBufferType::MANAGED_BUFFER);
+  auto buf2 = block_manager->ReadTemporaryBuffer(1, std::move(read_buf));
+  std::cout << "read buffer success" << std::endl;
+  // verify the data
+  auto internal2 = buf2->InternalBuffer();
+  auto ret = memcmp(internal2, internal, block_size);
+  REQUIRE(ret == 0);
+  std::cout << "verify buffer success" << std::endl;
 }

@@ -504,12 +504,7 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 	// auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(io_end_time - start_time).count();
 
 	compression_adaptivity.Update(compression_result.level, time_before_ns);
-	uint64_t block_size;
-	if (compression_result.size == TemporaryBufferSize::DEFAULT) {
-		block_size = buffer.AllocSize();
-	} else {
-		block_size = TemporaryBufferSizeToSize(compression_result.size);
-	}
+
 	
 	// 记录压缩比率
 	// double compression_ratio = 1.0;
@@ -538,7 +533,12 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 	
 	// // 使用 DuckDB 的日志系统记录
 	// Printer::Print(log_message);
-	
+	uint64_t block_size;
+	if (compression_result.size == TemporaryBufferSize::DEFAULT) {
+		block_size = buffer.AllocSize();
+	} else {
+		block_size = TemporaryBufferSizeToSize(compression_result.size);
+	}	
 	BufferManager::GetBufferManager(db).GetBlockAccessTracker(db).RecordAccess(block_id, BlockAccessType::WRITE, block_size, "WriteTemporaryBuffer");
 }
 
