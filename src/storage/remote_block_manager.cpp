@@ -1,7 +1,6 @@
 #include "duckdb/storage/remote_block_manager.hpp"
 #include "duckdb/common/allocator.hpp"
 #include "duckdb/common/exception.hpp"
-#include "duckdb/common/printer.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
@@ -12,7 +11,7 @@ namespace duckdb {
 RemoteBlockManager::RemoteBlockManager(DatabaseInstance& db)
   : db(db) {
   config = make_uniq<mpool::Config>();
-  enable_compress = false;
+  enable_compress = true;
   config->hn_host = "127.0.0.1";
   config->hn_user = "root";
   config->hn_password = "123123";
@@ -197,8 +196,6 @@ unique_ptr<FileBuffer> RemoteBlockManager::DecompressBuffer(unique_ptr<FileBuffe
   	// Decompress into buffer
 	auto buffer = buffer_manager.ConstructManagedBuffer(buffer_manager.GetBlockSize(), std::move(reusable_buffer));
   const auto compressed_size = Load<idx_t>(compressed_buffer.get());
-  auto msg = StringUtil::Format("try to DeCompress block, compressed_size: %d", compressed_size);
-  Printer::Print(msg);
 	D_ASSERT(!duckdb_zstd::ZSTD_isError(compressed_size));
 	const auto decompressed_size = duckdb_zstd::ZSTD_decompress(
 	    buffer->InternalBuffer(), buffer->AllocSize(), compressed_buffer.get() + sizeof(idx_t), compressed_size);

@@ -8,7 +8,56 @@
 #include "duckdb/main/database.hpp"
 #include "duckdb/storage/storage_info.hpp"
 #include "duckdb/storage/temporary_file_manager.hpp"
+#include "status.h"
+#include <mutex>
+#include <unordered_map>
 namespace duckdb {
+
+namespace mock {
+
+class MockBlockManager {
+public:
+  MockBlockManager() {
+  }
+  mpool::Status init() {
+    return mpool::Status::ok();
+  };
+
+  void init_logger();
+
+  mpool::Status put(mpool::BlockId id, data_ptr_t data, uint64_t size) {
+    lock_guard<mutex> guard(lock);
+    auto copy_data = new uint8_t[size];
+    memcpy(copy_data, data, size);
+    data_map[id] = std::make_pair(copy_data, size);
+    return mpool::Status::ok();
+  };
+
+  mpool::Status get(mpool::BlockId id, data_ptr_t data) {
+    lock_guard<mutex> guard(lock);
+    auto it = data_map.find(id);
+    if (it == data_map.end()) {
+      return mpool::Status::not_found("Not found");
+    }
+    memcpy(data, it->second.first, it->second.second);
+    return mpool::Status::ok();
+  }
+
+  bool has(mpool::BlockId id) {
+    lock_guard<mutex> guard(lock);
+    return data_map.find(id) != data_map.end();
+  }
+
+  mpool::Status remove(mpool::BlockId id) {
+    lock_guard<mutex> guard(lock);
+    data_map.erase(id);
+    return mpool::Status::ok();
+  }
+private:
+  std::unordered_map<mpool::BlockId, std::pair<data_ptr_t, uint64_t>> data_map;
+  mutex lock;
+};
+}
 class RemoteBlockManager {
 public:
   explicit RemoteBlockManager(DatabaseInstance& db);
@@ -47,4 +96,6 @@ public:
 	//! Class that oversees when/how much to compress
 	array<TemporaryFileCompressionAdaptivity, COMPRESSION_ADAPTIVITIES> compression_adaptivities;
 };
+
+
 }
