@@ -22,7 +22,7 @@ ENDIF()
 MESSAGE(STATUS "ibverbs lib ${LIB_IBVERBS}")
 
 
-SET(LIBMPOOL_PATH /flash/tmpfile/fischer.yxy/PolarDB_802/storage/innobase/mpool/libmpool.a)
+SET(LIBMPOOL_PATH /flash/tmpfile/fischer.yxy/PolarDB_802/storage/innobase/mpool/build/libmpool.a)
 SET(LIBMYSQL /flash/tmpfile/fischer.yxy/PolarDB_802/lib/libmysqlclient.so)
 SET(PRDMA /flash/tmpfile/fischer.yxy/PolarDB_802/storage/innobase/rdma/libprdma.a)
 SET(MEMPROTO /flash/tmpfile/fischer.yxy/PolarDB_802/sql/memcl/protocol/libmemclproto.a)
