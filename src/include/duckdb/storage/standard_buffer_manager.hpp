@@ -17,6 +17,7 @@
 #include "duckdb/storage/buffer/buffer_pool.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
 #include "duckdb/storage/remote_block_manager.hpp"
+#include "memory_allocator.h"
 
 namespace duckdb {
 
@@ -186,6 +187,8 @@ protected:
 	atomic<block_id_t> temporary_id;
 	//! Allocator associated with the buffer manager, that passes all allocations through this buffer manager
 	Allocator buffer_allocator;
+	//! Allocator associated with the buffer manager, allocating rdma buffer and remote memory
+	unique_ptr<mpool::MemoryAllocator> remote_allocator;
 	//! Block manager for temp data
 	unique_ptr<BlockManager> temp_block_manager;
 

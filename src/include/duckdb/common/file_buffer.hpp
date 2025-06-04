@@ -8,16 +8,18 @@
 
 #pragma once
 
+#include "common.h"
 #include "duckdb/common/constants.hpp"
 #include "duckdb/common/enums/debug_initialize.hpp"
+#include "duckdb/common/typedefs.hpp"
 
 namespace duckdb {
 class Allocator;
 struct FileHandle;
 
-enum class FileBufferType : uint8_t { BLOCK = 1, MANAGED_BUFFER = 2, TINY_BUFFER = 3 };
+enum class FileBufferType : uint8_t { BLOCK = 1, MANAGED_BUFFER = 2, TINY_BUFFER = 3, RDMA_BUFFER = 4 };
 
-static constexpr idx_t FILE_BUFFER_TYPE_COUNT = 3;
+static constexpr idx_t FILE_BUFFER_TYPE_COUNT = 4;
 
 //! The FileBuffer represents a buffer that can be read or written to a Direct IO FileHandle.
 class FileBuffer {
@@ -37,6 +39,8 @@ public:
 	//! The user-facing size of the buffer.
 	//! This is equivalent to internal_size - BLOCK_HEADER_SIZE.
 	uint64_t size;
+
+	mpool::MemHandle* remote_handle;
 
 public:
 	//! Read into the FileBuffer from the specified location.
@@ -61,6 +65,9 @@ public:
 		return size;
 	}
 	data_ptr_t InternalBuffer() {
+		if (type == FileBufferType::RDMA_BUFFER) {
+			return static_cast<data_ptr_t>(remote_handle->local_memory);
+		}
 		return internal_buffer;
 	}
 

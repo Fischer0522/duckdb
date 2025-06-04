@@ -199,7 +199,7 @@ void EvictionQueue::PurgeIteration(const idx_t purge_size) {
 
 BufferPool::BufferPool(idx_t maximum_memory, bool track_eviction_timestamps,
                        idx_t allocator_bulk_deallocation_flush_threshold)
-    : eviction_queue_sizes({BLOCK_QUEUE_SIZE, MANAGED_BUFFER_QUEUE_SIZE, TINY_BUFFER_QUEUE_SIZE}),
+    : eviction_queue_sizes({BLOCK_QUEUE_SIZE, MANAGED_BUFFER_QUEUE_SIZE, TINY_BUFFER_QUEUE_SIZE, RDMA_BUFFER_QUEUE_SIZE}),
       maximum_memory(maximum_memory),
       allocator_bulk_deallocation_flush_threshold(allocator_bulk_deallocation_flush_threshold),
       track_eviction_timestamps(track_eviction_timestamps),
