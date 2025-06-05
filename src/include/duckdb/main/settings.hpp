@@ -1237,6 +1237,26 @@ struct ZstdMinStringLengthSetting {
 	static Value GetSetting(const ClientContext &context);
 };
 
+struct TrackBlockAccessSetting {
+	using RETURN_TYPE = bool;
+	static constexpr const char *Name = "track_block_access";
+	static constexpr const char *Description = "Whether to track block access (read/write) to temporary directory";
+	static constexpr const char *InputType = "BOOLEAN";
+	static void SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &parameter);
+	static void ResetGlobal(DatabaseInstance *db, DBConfig &config);
+	static Value GetSetting(const ClientContext &context);
+};
+
+struct BlockAccessTrackingFileSetting {
+	using RETURN_TYPE = string;
+	static constexpr const char *Name = "block_access_tracking_file";
+	static constexpr const char *Description = "Path to store block access tracking CSV file";
+	static constexpr const char *InputType = "VARCHAR";
+	static void SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &parameter);
+	static void ResetGlobal(DatabaseInstance *db, DBConfig &config);
+	static Value GetSetting(const ClientContext &context);
+};
+
 //===----------------------------------------------------------------------===//
 // End of the auto-generated list of settings structures
 //===--------------------------------------------------------------------===//
