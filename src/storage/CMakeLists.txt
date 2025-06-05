@@ -32,7 +32,8 @@ add_library_unity(
   remote_block_manager.cpp
   storage_info.cpp
   storage_lock.cpp
-  wal_replay.cpp)
+  wal_replay.cpp
+  block_tracker.cpp)
 set(ALL_OBJECT_FILES
     ${ALL_OBJECT_FILES} $<TARGET_OBJECTS:duckdb_storage>
     PARENT_SCOPE)

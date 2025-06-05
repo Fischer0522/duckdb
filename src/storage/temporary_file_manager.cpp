@@ -6,6 +6,7 @@
 #include "duckdb/storage/buffer/temporary_file_information.hpp"
 #include "duckdb/storage/standard_buffer_manager.hpp"
 #include "zstd.h"
+#include "duckdb/storage/block_tracker.hpp"
 
 namespace duckdb {
 
@@ -575,7 +576,15 @@ unique_ptr<FileBuffer> TemporaryFileManager::ReadTemporaryBuffer(block_id_t id,
 		index = GetTempBlockIndex(lock, id);
 		handle = GetFileHandle(lock, index.identifier);
 	}
-
+	auto &config = DBConfig::GetConfig(db);
+	if (config.options.track_block_access) {
+		try {
+			auto block_size = TemporaryBufferSizeToSize(index.identifier.size);
+				BlockTracker::GetInstance(db).TrackRead(id, block_size, "ReadTemporaryBuffer");
+		} catch (...) {
+				// Ignore exceptions in tracking to not affect normal operation
+		}
+}
 	auto buffer = handle->ReadTemporaryBuffer(index.block_index.GetIndex(), std::move(reusable_buffer));
 	{
 		// remove the block (and potentially erase the temp file)
@@ -608,6 +617,15 @@ void TemporaryFileManager::EraseUsedBlock(TemporaryFileManagerLock &lock, block_
 	auto entry = used_blocks.find(id);
 	if (entry == used_blocks.end()) {
 		throw InternalException("EraseUsedBlock - Block %llu not found in used blocks", id);
+	}
+	auto &config = DBConfig::GetConfig(db);
+	if (config.options.track_block_access) {
+		try {
+			auto block_size = TemporaryBufferSizeToSize(index.identifier.size);
+			BlockTracker::GetInstance(db).TrackErase(id, block_size, "EraseUsedBlock");
+		} catch (...) {
+				// Ignore exceptions in tracking to not affect normal operation
+		}
 	}
 	used_blocks.erase(entry);
 	handle.EraseBlockIndex(NumericCast<block_id_t>(index.block_index.GetIndex()));

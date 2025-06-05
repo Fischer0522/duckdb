@@ -299,6 +299,12 @@ struct DBConfigOptions {
 	bool scheduler_process_partial = false;
 #endif
 
+	//! Whether to track block access (read/write) to temporary directory
+	bool track_block_access = false;
+	
+	//! Path to store block access tracking CSV file
+	string block_access_tracking_file = "block_trace.csv";
+
 	bool operator==(const DBConfigOptions &other) const;
 };
 
