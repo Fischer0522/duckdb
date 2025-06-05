@@ -22,7 +22,7 @@ RemoteBlockManager::RemoteBlockManager(DatabaseInstance& db)
   config->pmd_id = 1;
   // 2GB remote memory and 512MB (4 chunks) local memory
   config->remote_memory_size = 2147483648;
-  config->local_memory_size = static_cast<uint64_t>(512 * 1024 * 1024);
+  config->local_memory_size = static_cast<uint64_t>(640 * 1024 * 1024);
   // 32K, 64K, 96K, 128K, 160K, 192K, 224K, 256K
   config->alloc_sizes = {32768, 65536, 98304, 131072, 
     163840, 196608, 229376, 262144};
