@@ -64,6 +64,7 @@ StandardBufferManager::StandardBufferManager(DatabaseInstance &db, string tmp)
       buffer_allocator(BufferAllocatorAllocate, BufferAllocatorFree, BufferAllocatorRealloc,
                        make_uniq<BufferAllocatorData>(*this)) {
 	temp_block_manager = make_uniq<InMemoryBlockManager>(*this, DEFAULT_BLOCK_ALLOC_SIZE);
+	remote_block_manager = make_uniq<RemoteBlockManager>(db);
 	temporary_directory.path = std::move(tmp);
 	for (idx_t i = 0; i < MEMORY_TAG_COUNT; i++) {
 		evicted_data_per_tag[i] = 0;
@@ -471,7 +472,8 @@ void StandardBufferManager::WriteTemporaryBuffer(MemoryTag tag, block_id_t block
 	// Append to a few grouped files.
 	if (buffer.AllocSize() == GetBlockAllocSize()) {
 		evicted_data_per_tag[uint8_t(tag)] += GetBlockAllocSize();
-		temporary_directory.handle->GetTempFile().WriteTemporaryBuffer(block_id, buffer);
+		// temporary_directory.handle->GetTempFile().WriteTemporaryBuffer(block_id, buffer);
+		remote_block_manager->WriteTemporaryBuffer(block_id, buffer);
 		return;
 	}
 
@@ -490,12 +492,16 @@ void StandardBufferManager::WriteTemporaryBuffer(MemoryTag tag, block_id_t block
 unique_ptr<FileBuffer> StandardBufferManager::ReadTemporaryBuffer(MemoryTag tag, BlockHandle &block,
                                                                   unique_ptr<FileBuffer> reusable_buffer) {
 	D_ASSERT(!temporary_directory.path.empty());
-	D_ASSERT(temporary_directory.handle.get());
+	// D_ASSERT(temporary_directory.handle.get());
 	auto id = block.BlockId();
 	if (temporary_directory.handle->GetTempFile().HasTemporaryBuffer(id)) {
 		// This is a block that was offloaded to a regular .tmp file, the file contains blocks of a fixed size
 		return temporary_directory.handle->GetTempFile().ReadTemporaryBuffer(id, std::move(reusable_buffer));
 	}
+	if (remote_block_manager->HasTemporaryBuffer(id)) {
+		return remote_block_manager->ReadTemporaryBuffer(id, std::move(reusable_buffer));
+	}
+
 
 	// This block contains data of variable size so we need to open it and read it to get its size.
 	idx_t block_size;
@@ -527,11 +533,17 @@ void StandardBufferManager::DeleteTemporaryFile(BlockHandle &block) {
 		}
 	}
 	// check if we should delete the file from the shared pool of files, or from the general file system
-	if (temporary_directory.handle->GetTempFile().HasTemporaryBuffer(id)) {
+	// if (temporary_directory.handle->GetTempFile().HasTemporaryBuffer(id)) {
+	// 	evicted_data_per_tag[uint8_t(block.GetMemoryTag())] -= GetBlockAllocSize();
+	// 	temporary_directory.handle->GetTempFile().DeleteTemporaryBuffer(id);
+	// 	return;
+	// }
+	if (remote_block_manager->HasTemporaryBuffer(id)) {
 		evicted_data_per_tag[uint8_t(block.GetMemoryTag())] -= GetBlockAllocSize();
-		temporary_directory.handle->GetTempFile().DeleteTemporaryBuffer(id);
+		remote_block_manager->DeleteTemporaryBuffer(id);
 		return;
 	}
+
 
 	// The file is not in the shared pool of files.
 	auto &fs = FileSystem::GetFileSystem(db);

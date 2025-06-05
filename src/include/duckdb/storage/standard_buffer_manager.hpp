@@ -16,6 +16,7 @@
 #include "duckdb/storage/buffer/block_handle.hpp"
 #include "duckdb/storage/buffer/buffer_pool.hpp"
 #include "duckdb/storage/buffer_manager.hpp"
+#include "duckdb/storage/remote_block_manager.hpp"
 
 namespace duckdb {
 
@@ -180,6 +181,8 @@ protected:
 	Allocator buffer_allocator;
 	//! Block manager for temp data
 	unique_ptr<BlockManager> temp_block_manager;
+	
+	unique_ptr<RemoteBlockManager> remote_block_manager;
 	//! Temporary evicted memory data per tag
 	atomic<idx_t> evicted_data_per_tag[MEMORY_TAG_COUNT];
 };

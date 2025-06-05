@@ -3,8 +3,9 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/likely.hpp"
 #include "duckdb/common/memory_safety.hpp"
-
+#include "exception.hpp"
 #include <memory>
+#include "duckdb/common/exception.hpp"
 #include <type_traits>
 
 namespace duckdb {
@@ -22,6 +23,8 @@ private:
 		return;
 #else
 		if (DUCKDB_UNLIKELY(null)) {
+			fprintf(stderr, "FATAL ERROR: Attempted to dereference unique_ptr that is NULL!\n");
+			fprintf(stderr, "Stack trace:\n%s\n", Exception::GetStackTrace().c_str());
 			throw duckdb::InternalException("Attempted to dereference unique_ptr that is NULL!");
 		}
 #endif

@@ -20,7 +20,6 @@ if(POLICY CMP0063)
   cmake_policy(SET CMP0063 NEW)
 endif()
 
-# 在项目定义之前添加
 set(CMAKE_C_COMPILER "/opt/rh/devtoolset-7/root/usr/bin/gcc")
 set(CMAKE_CXX_COMPILER "/opt/rh/devtoolset-7/root/usr/bin/g++")
 
