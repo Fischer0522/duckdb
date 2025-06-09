@@ -8,6 +8,7 @@
 #include "duckdb/main/database.hpp"
 #include "duckdb/parallel/task_scheduler.hpp"
 #include "zstd.h"
+#include "duckdb/storage/block_tracker.hpp"
 #include <mutex>
 
 namespace duckdb {
@@ -95,6 +96,14 @@ void RemoteBlockManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer &b
 	const auto time_before_ns = TemporaryFileCompressionAdaptivity::GetCurrentTimeNanos();
 	AllocatedData compressed_buffer;
 	const auto compression_result = CompressBuffer(compression_adaptivity, buffer, compressed_buffer);
+  auto &config = DBConfig::GetConfig(db);
+  if (config.options.track_block_access) {
+		try {
+			BlockTracker::GetInstance(db).TrackWrite(block_id, RemoteBufferSizeToSize(compression_result.size), "WriteTemporaryBuffer");
+		} catch (...) {
+				// Ignore exceptions in tracking to not affect normal operation
+		}
+	}
 	compression_adaptivity.Update(compression_result.level, time_before_ns);
 
   if (compression_result.size == TemporaryBufferSize::DEFAULT) {
@@ -138,6 +147,14 @@ unique_ptr<FileBuffer> RemoteBlockManager::ReadTemporaryBuffer(block_id_t id, un
     }
     return constructed_buffer;
   }
+  auto &config = DBConfig::GetConfig(db);
+	if (config.options.track_block_access) {
+		try {
+				BlockTracker::GetInstance(db).TrackRead(id, block_size, "ReadTemporaryBuffer");
+		} catch (...) {
+				// Ignore exceptions in tracking to not affect normal operation
+		}
+	}
 
   if (SizeToRemoteBufferSize(block_size) == TemporaryBufferSize::DEFAULT) {
     // reusable buffer might be nullptr, construct a new buffer here
@@ -146,6 +163,7 @@ unique_ptr<FileBuffer> RemoteBlockManager::ReadTemporaryBuffer(block_id_t id, un
     if (!ret.is_ok()) {
       throw InternalException("RemoteBlockManager::ReadTemporaryBuffer failed with : " + ret.message());
     }
+    EraseUsedBlock(id);
     return constructed_buffer;
   } 
   // handle compress here
@@ -162,10 +180,6 @@ unique_ptr<FileBuffer> RemoteBlockManager::ReadTemporaryBuffer(block_id_t id, un
 }
 
 void RemoteBlockManager::DeleteTemporaryBuffer(block_id_t id) {
-  auto ret = block_manager.remove(id);
-  if (!ret.is_ok()) {
-    throw InternalException("RemoteBlockManager::DeleteTemporaryBuffer failed with : " + ret.message());
-  }
   EraseUsedBlock(id);
 }
 
@@ -215,6 +229,19 @@ unique_ptr<FileBuffer> RemoteBlockManager::DecompressBuffer(unique_ptr<FileBuffe
 }
 
 void RemoteBlockManager::EraseUsedBlock(block_id_t id) {
+  auto ret = block_manager.remove(id);
+  if (!ret.is_ok()) {
+    throw InternalException("RemoteBlockManager::DeleteTemporaryBuffer failed with : " + ret.message());
+  }
+  auto &config = DBConfig::GetConfig(db);
+	if (config.options.track_block_access) {
+		try {
+			BlockTracker::GetInstance(db).TrackErase(id, 0, "EraseUsedBlock");
+		} catch (...) {
+      Printer::PrintF("Error in EraseUsedBlock, block_id : %llu", id);
+				// Ignore exceptions in tracking to not affect normal operation
+		}
+	}
   std::unique_lock<mutex> lock(manager_block);
   block_sizes.erase(id);
 }

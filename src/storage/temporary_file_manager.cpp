@@ -465,7 +465,14 @@ void TemporaryFileManager::WriteTemporaryBuffer(block_id_t block_id, FileBuffer 
 	D_ASSERT(index.IsValid());
 
 	handle->WriteTemporaryBuffer(buffer, index.block_index.GetIndex(), compressed_buffer);
-
+	auto &config = DBConfig::GetConfig(db);
+	if (config.options.track_block_access) {
+		try {
+			BlockTracker::GetInstance(db).TrackWrite(block_id, TemporaryBufferSizeToSize(compression_result.size), "WriteTemporaryBuffer");
+		} catch (...) {
+				// Ignore exceptions in tracking to not affect normal operation
+		}
+	}
 	compression_adaptivity.Update(compression_result.level, time_before_ns);
 }
 
@@ -584,7 +591,7 @@ unique_ptr<FileBuffer> TemporaryFileManager::ReadTemporaryBuffer(block_id_t id,
 		} catch (...) {
 				// Ignore exceptions in tracking to not affect normal operation
 		}
-}
+	}
 	auto buffer = handle->ReadTemporaryBuffer(index.block_index.GetIndex(), std::move(reusable_buffer));
 	{
 		// remove the block (and potentially erase the temp file)
