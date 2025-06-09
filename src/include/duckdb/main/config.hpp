@@ -305,6 +305,9 @@ struct DBConfigOptions {
 	//! Path to store block access tracking CSV file
 	string block_access_tracking_file = "block_trace.csv";
 
+	//! Whether to use remote block manager for temporary buffer storage
+	bool use_remote_block_manager = false;
+
 	bool operator==(const DBConfigOptions &other) const;
 };
 

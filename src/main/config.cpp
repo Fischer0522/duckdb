@@ -176,6 +176,7 @@ static const ConfigurationOption internal_options[] = {
     DUCKDB_GLOBAL(ZstdMinStringLengthSetting),
     DUCKDB_GLOBAL(TrackBlockAccessSetting),
     DUCKDB_GLOBAL(BlockAccessTrackingFileSetting),
+		DUCKDB_GLOBAL(UseRemoteBlockManagerSetting),
     FINAL_SETTING};
 
 vector<ConfigurationOption> DBConfig::GetOptions() {
